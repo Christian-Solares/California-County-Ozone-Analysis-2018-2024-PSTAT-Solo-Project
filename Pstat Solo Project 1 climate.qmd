@@ -1,0 +1,478 @@
+---
+title: "Solo Project 1 Climate"
+author: "Christian Solares"
+format: pdf
+editor: visual
+---
+
+## Goal of Project:
+
+In this project I will examine air quality patterns for California counties between 2018 and 2024 to determine the impact COVID-19 lockdowns had on ozone pollution. Aims to determine the places where the greatest levels of ozone pollution exist and what the health consequences are of experiencing poor air quality for an extended period. By examining location and time patterns, the research will determine which places tend to experience the poorest air quality and quantify the consequence on citizens through the use of indicators such as unhealthy air days and instances of exceeding the AQI. By merging maps indicating the dispersal of pollution with time trend analysis to provide the full scope of California's air quality challenges around this significant period that included shifts in behaviors due to the pandemic.
+
+
+```{r}
+# install.packages("tidyverse")
+# install.packages("lubridate")
+# install.packages("RSQLite")
+# install.packages("dplyr")
+# install.packages("ggplot2")
+# install.packages("lubridate")
+library(tidyverse)
+library(lubridate)
+library(RSQLite)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+
+all_years_data <- bind_rows(
+  read.csv("C:/Users/csola/OneDrive/Desktop/Pstat Solo Project 1/2025_2018_annual_aqi_by_county/annual_aqi_by_county_2018/annual_aqi_by_county_2018.csv"),
+  read.csv("C:/Users/csola/OneDrive/Desktop/Pstat Solo Project 1/2025_2018_annual_aqi_by_county/annual_aqi_by_county_2019/annual_aqi_by_county_2019.csv"),
+  read.csv("C:/Users/csola/OneDrive/Desktop/Pstat Solo Project 1/2025_2018_annual_aqi_by_county/annual_aqi_by_county_2020/annual_aqi_by_county_2020.csv"),
+  read.csv("C:/Users/csola/OneDrive/Desktop/Pstat Solo Project 1/2025_2018_annual_aqi_by_county/annual_aqi_by_county_2021/annual_aqi_by_county_2021.csv"),
+  read.csv("C:/Users/csola/OneDrive/Desktop/Pstat Solo Project 1/2025_2018_annual_aqi_by_county/annual_aqi_by_county_2022/annual_aqi_by_county_2022.csv"),
+  read.csv("C:/Users/csola/OneDrive/Desktop/Pstat Solo Project 1/2025_2018_annual_aqi_by_county/annual_aqi_by_county_2023/annual_aqi_by_county_2023.csv"),
+  read.csv("C:/Users/csola/OneDrive/Desktop/Pstat Solo Project 1/2025_2018_annual_aqi_by_county/annual_aqi_by_county_2024/annual_aqi_by_county_2024.csv")
+)
+
+# head(all_years_data)
+# colnames(all_years_data)
+# print(all_years_data$State.Name == "California")
+Cali_all_years_data <- filter(all_years_data, all_years_data$State == "California")
+# the output was NA because there were no values that matched the condition
+head(Cali_all_years_data)
+```
+
+Now lets select specific columns and lets clean data.
+
+```{r}
+# we do not include "State" column because we know the only value it has is "California"
+Cali_all_years_data <- select(Cali_all_years_data, -"State")
+
+head(Cali_all_years_data, 10)
+
+colnames(Cali_all_years_data)
+
+# Days.with.AQI - Total number of days air quality was measured
+# 
+# Good.Days - Days when AQI was 0-50 (Good air quality)
+# 
+# Moderate.Days - Days when AQI was 51-100 (Acceptable)
+# 
+# Unhealthy.for.Sensitive.Groups.Days - Days when AQI was 101-150 (Unhealthy for
+# children, elderly, people with lung disease)
+# 
+# Unhealthy.Days - Days when AQI was 151-200 (Everyone may experience effects)
+# 
+# Very.Unhealthy.Days - Days when AQI was 201-300 (Health alert)
+# 
+# Hazardous.Days - Days when AQI was 301-500 (Health warnings of emergency conditions)
+
+# Days.CO - Number of days Carbon Monoxide was the main pollutant
+# 
+# Days.NO2 - Number of days Nitrogen Dioxide was the main pollutant
+# 
+# Days.Ozone - Number of days ground level Ozone was the main pollutant (The focus!)
+# 
+# Days.PM2.5 - Number of days fine particulate matter (2.5 micrometers) was main pollutant
+# 
+# Days.PM10 - Number of days coarse particulate matter (10 micrometers) was main pollutant
+```
+
+understand data more
+
+```{r}
+# AQI is the air quality index, the higher the number, the worse the air quality
+summary(Cali_all_years_data$Median.AQI)
+
+summary(Cali_all_years_data$Max.AQI)
+
+#X90th.Percentile.AQI is The AQI value that is higher than 90% of the daily AQI readings for that year
+summary(Cali_all_years_data$X90th.Percentile.AQI)
+
+summary(Cali_all_years_data$Days.Ozone)
+
+range(Cali_all_years_data$Year)
+# > 2018-2024
+
+sum(is.na(Cali_all_years_data)) 
+# there is no NA values in the dataset
+
+```
+
+Now lets see which California countries have the worst ozone levels.
+
+```{r}
+# n() is a function that counts the number of rows in each group
+# we ungroup near the end because we want to make sure that the data is not grouped anymore
+
+cali_county_ozone <- Cali_all_years_data |>
+  group_by(County) |>
+  summarise(
+    avg_ozone_days = as.integer(mean(Days.Ozone)),
+    total_ozone_days = sum(Days.Ozone),
+    max_ozone_aqi = max(Max.AQI),
+    avg_unhealthy_days = as.integer(mean(Unhealthy.Days)),
+    avg_sensitive_group_days = as.integer(mean(Unhealthy.for.Sensitive.Groups.Days)),
+    avg_very_unhealthy_days = as.integer(mean(Very.Unhealthy.Days)),
+    n_years_of_data = n() # Number of years with data
+  ) |>
+  ungroup() |>
+  arrange(desc(avg_ozone_days))
+
+print(cali_county_ozone)
+
+ggplot(cali_county_ozone, aes(x = reorder(County, -avg_ozone_days), y = avg_ozone_days)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "California Counties with Most Frequent Ozone Pollution (2018-2024)",
+       x = "County",
+       y = "Average Days Ozone Was Main Pollutant") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+Now lets see which California counties that have the worst AQI(Air Quality Index).
+
+```{r}
+cali_county_AQI <- Cali_all_years_data |>
+  group_by(County) |>
+  summarise(
+    avg_median_aqi = mean(Median.AQI),
+    avg_max_aqi = mean(Max.AQI),
+    total_unhealthy_days = sum(Unhealthy.Days),
+    total_sensitive_group_days = sum(Unhealthy.for.Sensitive.Groups.Days),
+    avg_ozone_days = mean(Days.Ozone),
+    n_years_of_data = n() # Number of years with data
+  ) |>
+  ungroup() |>
+  arrange(desc(avg_median_aqi))
+
+print(cali_county_AQI)
+
+# Updated barchart
+ggplot(cali_county_AQI, aes(x = reorder(County, -avg_median_aqi), y = avg_median_aqi)) +
+  geom_bar(stat = "identity", fill = "orange") +
+  labs(title = "Average Median AQI by California County (2018-2024)",
+       x = "County",
+       y = "Average Median Air Quality Index") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+How has ozone changed over time?
+
+```{r}
+ozone_trends <- Cali_all_years_data |>
+  group_by(County, Year) |>
+  summarise(ozone_days = mean(Days.Ozone)) |>
+  ungroup() |>
+  group_by(County) |>
+  mutate(
+    first_year = first(Year),  # Gets the first year for each county
+    last_year = last(Year),    # Gets the last year for each county
+    first_ozone = first(ozone_days),  # Ozone days in first year
+    last_ozone = last(ozone_days)     # Ozone days in last year
+  ) |>
+  ungroup() |>
+  distinct(County, first_ozone, last_ozone) |>
+  mutate(change = last_ozone - first_ozone) |>
+  arrange(desc(change))
+
+# distinct() is used to ensure we have one row per county with the relevant data
+
+# graph that represents overall ozone trends by county
+ggplot(Cali_all_years_data, aes(x = Year, y = Days.Ozone, group = County, color = County)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Overall Ozone Pollution Trends by California County (2018-2024)",
+       x = "Year",
+       y = "Average Days Ozone Was Main Pollutant") +
+  theme(legend.position = "none")
+
+# Counties that worsened the most (biggest positive change)
+head(ozone_trends, 10)
+
+# Counties that improved the most (biggest negative change)  
+tail(ozone_trends, 10)
+
+# graph that represents top 10 counties that worsened the most
+ggplot(filter(Cali_all_years_data, County %in% head(ozone_trends$County, 10)), 
+    aes(x = Year, y = Days.Ozone, group = County, color = County)) +
+    geom_line(linewidth = 1) +
+    labs(title = "Top 10 California Counties with Worsening Ozone Pollution (2018-2024)",
+       x = "Year",
+       y = "Average Days Ozone Was Main Pollutant") +
+    theme(legend.position = "bottom")
+
+# graph that represents top 10 counties that improved the most
+ggplot(filter(Cali_all_years_data, County %in% tail(ozone_trends$County, 10)), 
+    aes(x = Year, y = Days.Ozone, group = County, color = County)) +
+    geom_line(linewidth = 1) +
+    labs(title = "Top 10 California Counties with Improving Ozone Pollution (2018-2024)",
+       x = "Year",
+       y = "Average Days Ozone Was Main Pollutant") +
+    theme(legend.position = "bottom")
+
+```
+
+Comparing Ozone vs Other Pollutants
+
+```{r}
+# remember PM2.5 is fine particulate matter (2.5 micrometers)
+# PM10 is coarse particulate matter (10 micrometers)
+# CO is Carbon Monoxide
+# NO2 is Nitrogen Dioxide
+pollutant_comparison <- Cali_all_years_data |>
+  group_by(County) |>
+  summarise(
+    avg_ozone = mean(Days.Ozone),
+    avg_PM2.5 = mean(Days.PM2.5),
+    avg_PM10 = mean(Days.PM10),
+    avg_CO = mean(Days.CO),
+    avg_NO2 = mean(Days.NO2),
+  ) |>
+    ungroup() |>
+  arrange(desc(avg_ozone))
+
+print(pollutant_comparison)
+
+```
+
+Air Impact on Health
+
+```{r}
+# Do counties with more ozone days have more unhealthy days?
+health_analysis <- Cali_all_years_data |>
+  group_by(County) |>
+  summarise(
+    avg_ozone_days = mean(Days.Ozone),
+    total_unhealthy_days = sum(Unhealthy.Days + Unhealthy.for.Sensitive.Groups.Days +
+                         Very.Unhealthy.Days + Hazardous.Days),
+    avg_unhealthy_days = mean(Unhealthy.Days),
+    avg_sensitive_days = mean(Unhealthy.for.Sensitive.Groups.Days),
+    avg_very_unhealthy_days = mean(Very.Unhealthy.Days),
+    avg_hazardous_days = mean(Hazardous.Days)
+  ) |>
+  ungroup() |>
+  arrange(desc(total_unhealthy_days))
+
+head(health_analysis)
+
+# Scatter plot to visualize relationship
+ggplot(health_analysis, aes(x = avg_ozone_days, y = total_unhealthy_days)) +
+  geom_point(aes(size = avg_hazardous_days, color = avg_sensitive_days)) +
+  geom_smooth(method = "lm", color = "red") +
+  labs(
+    title = "Relationship Between Ozone Pollution and Unhealthy Air Days",
+    subtitle = "California Counties (2018-2024)",
+    x = "Average Days Ozone Was Main Pollutant",
+    y = "Total Unhealthy Air Days (All Categories)",
+    size = "Avg Very Unhealthy Days",
+    color = "Avg Sensitive Group Days"
+  ) +
+  theme_minimal() +
+  scale_color_gradient(low = "yellow", high = "red")
+
+
+# categories based on ozone days
+health_categories <- health_analysis |>
+  mutate(ozone_level = case_when(
+    avg_ozone_days > 300 ~ "Very High Ozone",
+    avg_ozone_days > 200 ~ "High Ozone", 
+    avg_ozone_days > 100 ~ "Moderate Ozone",
+    TRUE ~ "Low Ozone"
+  ))
+
+# health impacts across ozone levels
+health_categories |>
+  group_by(ozone_level) |>
+  summarise(
+    avg_bad_days = mean(total_unhealthy_days),
+    county_count = n()
+  ) |>
+  ungroup()
+
+```
+How did Covid-19 affect the ozone levels in California?
+pre-COVID (2018-2019), COVID (2020), and post-COVID (2021-2024) periods.
+
+```{r}
+covid_analysis <- Cali_all_years_data |>
+  mutate(
+    time_period = case_when(
+      Year <= 2019 ~ "Pre-COVID (2018-2019)",
+      Year == 2020 ~ "COVID Lockdown (2020)",
+      Year >= 2021 ~ "Post-COVID (2021-2024)"
+    )
+  )
+
+covid_summary <- covid_analysis |>
+  group_by(time_period) |>
+  summarise(
+    avg_ozone_days = mean(Days.Ozone),
+    avg_median_aqi = mean(Median.AQI),
+    avg_max_aqi = mean(Max.AQI),
+    avg_unhealthy_days = mean(Unhealthy.Days)
+  ) |> 
+  ungroup() |>
+    arrange(factor(time_period, levels = c("Pre-COVID (2018-2019)", 
+                                      "COVID Lockdown (2020)", 
+                                      "Post-COVID (2021-2024)")))
+# to arrange from 2019 to 2024, we had to ungroup() first and then use
+# factor() inside arrange(), what factor() does is that it allows us to
+# specify the order of the levels
+
+print(covid_summary)
+
+
+ggplot(covid_summary, aes(x = time_period, y = avg_ozone_days, 
+                          fill = time_period)) + 
+    labs(
+    title = "Average Ozone Pollution Across COVID-19 Periods in California",
+    x = "Time Period",
+    y = "Average Days Ozone Was Main Pollutant"
+  ) +
+  theme(legend.position = "none")
+# here "fill = time_period" is used to color the bars differently based on
+# the time period
+
+```
+
+# comparing Urban and Rural Counties (to compare ozone levels 
+based on traffic density)
+
+```{r}
+urban_counties <- c("Los Angeles", "San Francisco", "San Diego", 
+                    "Santa Clara", "Alameda", "Orange")
+rural_counties <- c("Alpine", "Amador", "Calaveras", "Glenn", 
+                    "Humboldt", "Inyo", "Lake", "Mariposa", "Mendocino", 
+                    "Modoc", "Mono", "Nevada", "Plumas", "Sierra", 
+                    "Siskiyou", "Tehama", "Trinity", "Tuolumne")
+
+covid_urban_rural <- covid_analysis |>
+  mutate(
+    county_type = case_when(
+      County %in% urban_counties ~ "Urban",
+      County %in% rural_counties ~ "Rural", 
+      TRUE ~ "Mixed")
+  ) |>
+  group_by(time_period, county_type) |>
+  summarise(
+    avg_ozone = mean(Days.Ozone),
+    avg_aqi = mean(Median.AQI),
+    n_counties = n_distinct(County)
+  ) |>
+  ungroup() |>
+  arrange(county_type)
+
+print(covid_urban_rural)
+
+# now lets see specific counties with the biggest changes during lockdown
+covid_changes <- covid_analysis |>
+  group_by(County, time_period) |>
+  summarise(avg_ozone = mean(Days.Ozone)) |>
+  pivot_wider(names_from = time_period, values_from = avg_ozone) |>
+  mutate(
+    net_change = `Post-COVID (2021-2024)` - `Pre-COVID (2018-2019)`,
+    lockdown_change = `COVID Lockdown (2020)` - `Pre-COVID (2018-2019)`,
+    post_lockdown_change = `Post-COVID (2021-2024)` - `COVID Lockdown (2020)`) |>
+  ungroup() |>
+    relocate(net_change, lockdown_change, post_lockdown_change, 
+             .before = `COVID Lockdown (2020)`) |>
+  arrange(desc(abs(net_change)))
+# we use `` in mutate here because the column names have spaces and 
+# special characters, otherwise we don't need it
+# if the net change is positive, that means ozone levels increased
+# from pre-COVID to post-COVID
+# used new relocate function to move the "Change" columns to the front,
+# I put .before `COVID Lockdown (2020)` because I knew it was after County,
+# and it was quicker than writing every other column name
+
+print(head(covid_changes, 20))
+
+# this barplot shows the top 20 counties with the biggest net changes
+ggplot(head(covid_changes, 20), aes(x = reorder(County, abs(net_change)), 
+                                    y = net_change)) +
+  geom_bar(stat = "identity", aes(fill = net_change > 0)) +
+  scale_fill_manual(values = c("TRUE" = "red", "FALSE" = "green"),
+                    labels = c("Improved","Worsened"),
+                    name = "Change Direction") +
+  labs(
+    title = "Top 20 Changes in Ozone Days: Pre-COVID vs Post-COVID",
+    x = "County",
+    y = "Net Change in Ozone Days"
+  ) +
+  coord_flip() +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+# this barplot shows the top 20 lockdown biggest changes (2018-2020)
+ggplot(head(covid_changes, 20), aes(x = reorder(County, abs(lockdown_change)), 
+                                    y = lockdown_change)) +
+  geom_bar(stat = "identity", aes(fill = lockdown_change > 0)) +
+  scale_fill_manual(values = c("TRUE" = "red", "FALSE" = "green"),
+                    labels = c("Improved","Worsened"),
+                    name = "Change Direction") +
+  labs(
+    title = "Top 20 Changes in Ozone Days: Pre-COVID vs COVID-Lockdown",
+    x = "County",
+    y = "Net Change in Ozone Days"
+  ) +
+  coord_flip() +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+# this barplot shows the top 20 post-lockdown biggest changes (2020-2024)
+ggplot(head(covid_changes, 20), aes(x = reorder(County,
+                                                abs(post_lockdown_change)), 
+                                    y = post_lockdown_change)) +
+  geom_bar(stat = "identity", aes(fill = post_lockdown_change > 0)) +
+  scale_fill_manual(values = c("TRUE" = "red", "FALSE" = "green"),
+                    labels = c("Improved","Worsened"),
+                    name = "Change Direction") +
+  labs(
+    title = "Top 20 Changes in Ozone Days: COVID-Lockdown vs Post-Covid",
+    x = "County",
+    y = "Net Change in Ozone Days"
+  ) +
+  coord_flip() +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+```
+Statistical Test to see if the Covid lockdown made a significant difference
+```{r}
+# Did the lockdown really make a difference?
+pre_covid <- covid_analysis %>% filter(time_period == "Pre-COVID (2018-2019)") %>% pull(Days.Ozone)
+during_covid <- covid_analysis %>% filter(time_period == "COVID Lockdown (2020)") %>% pull(Days.Ozone)
+
+t_test_result <- t.test(pre_covid, during_covid)
+print(t_test_result)
+
+# p-value = 0.3635 → Not statistically significant
+# Mean Pre-COVID: 182.4 ozone days
+# Mean During COVID: 169.4 ozone days
+# Difference: 13 days (7% decrease)
+# While there was a decrease during lockdowns, the variation between
+# counties was so large that we can't confidently say this wasn't just 
+# random fluctuation.
+
+```
+Statistical Test to see if the Covid lockdown made a significant difference
+(rural vs urban)
+```{r}
+# Calculate how many counties improved vs worsened during COVID
+covid_summary_stats <- covid_changes |>
+  summarise(
+    counties_improved = sum(net_change < 0),
+    counties_worsened = sum(net_change > 0),
+    avg_net_change = mean(net_change),
+    max_improvement = min(net_change),
+    max_worsening = max(net_change)
+  )
+
+print(covid_summary_stats)
+
+```
+
+```{r}
+
+```
